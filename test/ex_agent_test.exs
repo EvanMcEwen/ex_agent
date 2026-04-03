@@ -19,6 +19,8 @@ defmodule ExAgentTest do
       assert agent.timeout == 120_000
       assert agent.generate_opts == []
       assert agent.metadata == %{}
+      assert agent.memory_backend == ExAgent.Memory.InMemory
+      assert agent.memory_opts == []
     end
   end
 
@@ -39,7 +41,7 @@ defmodule ExAgentTest do
       assert state.task_ref == nil
       assert state.timer_ref == nil
 
-      messages = ReqLLM.Context.to_list(state.context)
+      messages = state.memory |> ExAgent.Memory.to_context() |> ReqLLM.Context.to_list()
       assert length(messages) == 1
       assert hd(messages).role == :system
     end
@@ -48,7 +50,7 @@ defmodule ExAgentTest do
       agent = %Agent{model: "anthropic:claude-sonnet-4-20250514"}
       state = State.new(agent)
 
-      messages = ReqLLM.Context.to_list(state.context)
+      messages = state.memory |> ExAgent.Memory.to_context() |> ReqLLM.Context.to_list()
       assert messages == []
     end
 

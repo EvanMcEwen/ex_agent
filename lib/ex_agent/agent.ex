@@ -26,7 +26,11 @@ defmodule ExAgent.Agent do
           max_turns: pos_integer(),
           timeout: pos_integer(),
           generate_opts: keyword(),
-          metadata: map()
+          metadata: map(),
+          memory_backend: module(),
+          memory_opts: keyword(),
+          tool_provider: module(),
+          tool_provider_opts: keyword()
         }
 
   @enforce_keys [:model]
@@ -38,6 +42,10 @@ defmodule ExAgent.Agent do
     max_turns: 10,
     timeout: 120_000,
     generate_opts: [],
-    metadata: %{}
+    metadata: %{},
+    memory_backend: ExAgent.Memory.InMemory,
+    memory_opts: [],
+    tool_provider: ExAgent.ToolProvider.Static,
+    tool_provider_opts: []
   ]
 end

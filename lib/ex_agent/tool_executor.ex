@@ -3,38 +3,30 @@ defmodule ExAgent.ToolExecutor do
 
   require Logger
 
-  alias ReqLLM.{Context, Tool, ToolCall}
+  alias ExAgent.ToolProvider
+  alias ReqLLM.ToolCall
 
-  @spec execute_tool_calls([ToolCall.t()], [Tool.t()], ReqLLM.Context.t()) ::
-          ReqLLM.Context.t()
-  def execute_tool_calls(tool_calls, tools, context) do
-    Enum.reduce(tool_calls, context, fn call, acc ->
-      tool_name = ToolCall.name(call)
-      tool = find_tool(tools, tool_name)
-      args = ToolCall.args_map(call) || %{}
+  @spec execute_tool_calls([ToolCall.t()], ToolProvider.t(), ExAgent.Memory.t()) ::
+          ExAgent.Memory.t()
+  def execute_tool_calls(tool_calls, provider, memory) do
+    results =
+      Enum.map(tool_calls, fn call ->
+        name = ToolCall.name(call)
+        args = ToolCall.args_map(call) || %{}
 
-      Logger.debug("[ExAgent] tool_call name=#{tool_name} args=#{inspect(args)}")
+        Logger.debug("[ExAgent] tool_call name=#{name} args=#{inspect(args)}")
 
-      result = execute_one(tool, tool_name, args)
+        result =
+          case ToolProvider.execute(provider, name, args) do
+            {:ok, value} -> value
+            {:error, reason} -> "Tool error: #{inspect(reason)}"
+          end
 
-      Logger.debug("[ExAgent] tool_result name=#{tool_name} result=#{inspect(result)}")
+        Logger.debug("[ExAgent] tool_result name=#{name} result=#{inspect(result)}")
 
-      Context.append(acc, Context.tool_result(call.id, tool_name, result))
-    end)
-  end
+        {call.id, name, result}
+      end)
 
-  defp find_tool(tools, name) do
-    Enum.find(tools, &(&1.name == name))
-  end
-
-  defp execute_one(nil, name, _args) do
-    "Error: Unknown tool '#{name}'"
-  end
-
-  defp execute_one(tool, _name, args) do
-    case Tool.execute(tool, args) do
-      {:ok, value} -> value
-      {:error, reason} -> "Tool error: #{inspect(reason)}"
-    end
+    ExAgent.Memory.append_tool_results(memory, tool_calls, results)
   end
 end

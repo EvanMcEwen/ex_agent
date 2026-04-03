@@ -5,8 +5,8 @@ defmodule ExAgent.Server do
 
   require Logger
 
-  alias ExAgent.{Agent, State, ToolExecutor}
-  alias ReqLLM.{Context, Response, ToolCall}
+  alias ExAgent.{Agent, Memory, State, ToolExecutor, ToolProvider}
+  alias ReqLLM.{Response, ToolCall}
 
   # --- Client API ---
 
@@ -47,13 +47,13 @@ defmodule ExAgent.Server do
   def handle_call({run_type, user_message, opts}, {caller_pid, _}, state)
       when run_type in [:run, :run_stream] do
     ref = make_ref()
-    context = Context.append(state.context, Context.user(user_message))
+    memory = Memory.append_user(state.memory, user_message)
     timeout = Keyword.get(opts, :timeout, state.agent.timeout)
     timer_ref = Process.send_after(self(), {:llm_timeout, ref}, timeout)
 
     state = %{
       state
-      | context: context,
+      | memory: memory,
         status: :running,
         error: nil,
         caller: {caller_pid, ref},
@@ -76,7 +76,7 @@ defmodule ExAgent.Server do
       state
       | turns: state.turns + 1,
         usage: merge_usage(state.usage, response.usage),
-        context: Context.append(state.context, response.message)
+        memory: Memory.append_assistant(state.memory, response.message)
     }
 
     tool_calls = Response.tool_calls(response)
@@ -87,10 +87,10 @@ defmodule ExAgent.Server do
     else
       notify_tool_calls(state, tool_calls)
 
-      context =
-        ToolExecutor.execute_tool_calls(tool_calls, state.agent.tools, state.context)
+      memory =
+        ToolExecutor.execute_tool_calls(tool_calls, state.tool_provider, state.memory)
 
-      state = %{state | context: context}
+      state = %{state | memory: memory}
 
       if state.turns >= state.agent.max_turns do
         complete(state, {:error, :max_turns_exceeded}, :max_turns_exceeded)
@@ -133,14 +133,10 @@ defmodule ExAgent.Server do
   # --- Private ---
 
   defp spawn_llm_call(%State{stream?: true} = state) do
-    generate_opts =
-      Keyword.merge(state.agent.generate_opts, tools: state.agent.tools)
-
-    model = state.agent.model
-    context = state.context
+    {model, context, generate_opts} = llm_params(state)
     {caller_pid, caller_ref} = state.caller
 
-    Logger.debug("[ExAgent] llm_call model=#{model} stream=true turn=#{state.turns + 1} messages=#{length(Context.to_list(context))}")
+    Logger.debug("[ExAgent] llm_call model=#{inspect(model)} stream=true turn=#{state.turns + 1} messages=#{length(ReqLLM.Context.to_list(context))}")
 
     %Task{ref: task_ref} =
       Task.Supervisor.async_nolink(ExAgent.TaskSupervisor, fn ->
@@ -166,13 +162,9 @@ defmodule ExAgent.Server do
   end
 
   defp spawn_llm_call(state) do
-    generate_opts =
-      Keyword.merge(state.agent.generate_opts, tools: state.agent.tools)
+    {model, context, generate_opts} = llm_params(state)
 
-    model = state.agent.model
-    context = state.context
-
-    Logger.debug("[ExAgent] llm_call model=#{model} stream=false turn=#{state.turns + 1} messages=#{length(Context.to_list(context))}")
+    Logger.debug("[ExAgent] llm_call model=#{inspect(model)} stream=false turn=#{state.turns + 1} messages=#{length(ReqLLM.Context.to_list(context))}")
 
     %Task{ref: task_ref} =
       Task.Supervisor.async_nolink(ExAgent.TaskSupervisor, fn ->
@@ -188,6 +180,13 @@ defmodule ExAgent.Server do
       end)
 
     %{state | task_ref: task_ref}
+  end
+
+  defp llm_params(state) do
+    tools = ToolProvider.list_tools(state.tool_provider)
+    generate_opts = Keyword.merge(state.agent.generate_opts, tools: tools)
+    context = Memory.to_context(state.memory)
+    {state.agent.model, context, generate_opts}
   end
 
   defp notify_tool_calls(%State{stream?: true, caller: {caller_pid, ref}}, tool_calls) do

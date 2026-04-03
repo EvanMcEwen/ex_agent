@@ -6,7 +6,8 @@ defmodule ExAgent.State do
   @type t :: %__MODULE__{
           agent: ExAgent.Agent.t(),
           status: status(),
-          context: ReqLLM.Context.t(),
+          memory: ExAgent.Memory.t(),
+          tool_provider: ExAgent.ToolProvider.t(),
           turns: non_neg_integer(),
           usage: map(),
           error: term() | nil,
@@ -18,7 +19,8 @@ defmodule ExAgent.State do
 
   defstruct [
     :agent,
-    :context,
+    :memory,
+    :tool_provider,
     :error,
     :caller,
     :task_ref,
@@ -31,14 +33,19 @@ defmodule ExAgent.State do
 
   @spec new(ExAgent.Agent.t()) :: t()
   def new(%ExAgent.Agent{} = agent) do
-    context =
+    {:ok, memory} = ExAgent.Memory.new(agent.memory_backend, agent.memory_opts)
+
+    memory =
       if agent.system_prompt do
-        ReqLLM.Context.new([ReqLLM.Context.system(agent.system_prompt)])
+        ExAgent.Memory.add_system_prompt(memory, agent.system_prompt)
       else
-        ReqLLM.Context.new()
+        memory
       end
 
-    %__MODULE__{agent: agent, context: context}
+    provider_opts = Keyword.put_new(agent.tool_provider_opts, :tools, agent.tools)
+    {:ok, tool_provider} = ExAgent.ToolProvider.new(agent.tool_provider, provider_opts)
+
+    %__MODULE__{agent: agent, memory: memory, tool_provider: tool_provider}
   end
 
   @spec snapshot(t()) :: map()
@@ -49,7 +56,7 @@ defmodule ExAgent.State do
       turns: state.turns,
       usage: state.usage,
       error: state.error,
-      message_count: length(ReqLLM.Context.to_list(state.context))
+      message_count: ExAgent.Memory.message_count(state.memory)
     }
   end
 end
