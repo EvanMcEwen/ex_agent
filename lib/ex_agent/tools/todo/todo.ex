@@ -2,16 +2,14 @@ defmodule ExAgent.Tools.Todo do
   @moduledoc """
   `ReqLLM.Tool` definitions for todo CRUD operations.
 
-  Each tool closes over a `%ExAgent.TodoStore{}` so mutations from LLM tool
-  calls are reflected immediately in the same store process.
+  Pass a store backend module to `tools/1` — the store process is started
+  automatically and closed over by each tool callback.
 
   ## Usage
 
-      {:ok, store} = ExAgent.TodoStore.new(ExAgent.TodoStore.InMemory)
-
       agent = %ExAgent.Agent{
         model: "anthropic:claude-sonnet-4-20250514",
-        tools: ExAgent.Tools.Todo.tools(store)
+        tools: ExAgent.Tools.Todo.tools(ExAgent.Tools.Todo.Store.InMemory)
       }
 
   ## Tools
@@ -22,13 +20,16 @@ defmodule ExAgent.Tools.Todo do
     * `todo_delete` — delete a todo by id
   """
 
-  alias ExAgent.TodoStore
+  alias ExAgent.Tools.Todo.Store
 
   @doc """
-  Returns the four CRUD tools bound to the given `store`.
+  Starts a store backed by `backend` and returns the four CRUD tools.
+  Accepts an optional `opts` keyword list forwarded to `Store.new/2`.
   """
-  @spec tools(TodoStore.t()) :: [ReqLLM.Tool.t()]
-  def tools(%TodoStore{} = store) do
+  @spec tools(module(), keyword()) :: [ReqLLM.Tool.t()]
+  def tools(backend, opts \\ []) when is_atom(backend) do
+    {:ok, store} = Store.new(backend, opts)
+
     [
       create_tool(store),
       list_tool(store),
@@ -60,8 +61,8 @@ defmodule ExAgent.Tools.Todo do
         content = args["content"]
         tags = args["tags"] || []
 
-        case TodoStore.create(store, content, tags) do
-          {:ok, todo} -> {:ok, Jason.encode!(todo)}
+        case Store.create(store, content, tags) do
+          {:ok, item} -> {:ok, Jason.encode!(item)}
           error -> error
         end
       end
@@ -83,8 +84,8 @@ defmodule ExAgent.Tools.Todo do
         }
       },
       callback: fn args ->
-        case TodoStore.list(store, args["tag"]) do
-          {:ok, todos} -> {:ok, Jason.encode!(todos)}
+        case Store.list(store, args["tag"]) do
+          {:ok, items} -> {:ok, Jason.encode!(items)}
           error -> error
         end
       end
@@ -123,8 +124,8 @@ defmodule ExAgent.Tools.Todo do
         id = args["id"]
         changes = Map.take(args, ["content", "tags", "done"])
 
-        case TodoStore.update(store, id, changes) do
-          {:ok, todo} -> {:ok, Jason.encode!(todo)}
+        case Store.update(store, id, changes) do
+          {:ok, item} -> {:ok, Jason.encode!(item)}
           error -> error
         end
       end
@@ -146,7 +147,7 @@ defmodule ExAgent.Tools.Todo do
         "required" => ["id"]
       },
       callback: fn args ->
-        case TodoStore.delete(store, args["id"]) do
+        case Store.delete(store, args["id"]) do
           :ok -> {:ok, Jason.encode!(%{deleted: true})}
           error -> error
         end

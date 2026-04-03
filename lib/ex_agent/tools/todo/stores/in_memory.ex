@@ -1,6 +1,6 @@
-defmodule ExAgent.TodoStore.InMemory do
+defmodule ExAgent.Tools.Todo.Store.InMemory do
   @moduledoc """
-  In-memory `TodoStore` backend backed by an ETS table.
+  In-memory `Store` backend backed by an ETS table.
 
   A `GenServer` owns the table for its lifetime — when the server stops, the
   table is automatically destroyed. All reads and writes are serialised through
@@ -15,34 +15,34 @@ defmodule ExAgent.TodoStore.InMemory do
 
   use GenServer
 
-  @behaviour ExAgent.TodoStore
+  @behaviour ExAgent.Tools.Todo.Store
 
-  alias ExAgent.Todo
+  alias ExAgent.Tools.Todo.Item
 
-  # --- Public API (TodoStore callbacks) ---
+  # --- Public API (Store callbacks) ---
 
-  @impl ExAgent.TodoStore
+  @impl ExAgent.Tools.Todo.Store
   def start_link(opts \\ []) do
     {gen_opts, _} = Keyword.split(opts, [:name])
     GenServer.start_link(__MODULE__, opts, gen_opts)
   end
 
-  @impl ExAgent.TodoStore
+  @impl ExAgent.Tools.Todo.Store
   def create(pid, content, tags) do
     GenServer.call(pid, {:create, content, tags})
   end
 
-  @impl ExAgent.TodoStore
+  @impl ExAgent.Tools.Todo.Store
   def list(pid, tag \\ nil) do
     GenServer.call(pid, {:list, tag})
   end
 
-  @impl ExAgent.TodoStore
+  @impl ExAgent.Tools.Todo.Store
   def update(pid, id, changes) do
     GenServer.call(pid, {:update, id, changes})
   end
 
-  @impl ExAgent.TodoStore
+  @impl ExAgent.Tools.Todo.Store
   def delete(pid, id) do
     GenServer.call(pid, {:delete, id})
   end
@@ -59,7 +59,7 @@ defmodule ExAgent.TodoStore.InMemory do
   def handle_call({:create, content, tags}, _from, table) do
     id = generate_id()
 
-    todo = %Todo{
+    item = %Item{
       id: id,
       content: content,
       tags: tags,
@@ -67,24 +67,24 @@ defmodule ExAgent.TodoStore.InMemory do
       inserted_at: DateTime.utc_now()
     }
 
-    :ets.insert(table, {id, todo})
-    {:reply, {:ok, todo}, table}
+    :ets.insert(table, {id, item})
+    {:reply, {:ok, item}, table}
   end
 
   def handle_call({:list, tag}, _from, table) do
-    todos =
-      :ets.foldl(fn {_id, todo}, acc -> [todo | acc] end, [], table)
+    items =
+      :ets.foldl(fn {_id, item}, acc -> [item | acc] end, [], table)
       |> filter_by_tag(tag)
       |> Enum.sort_by(& &1.inserted_at, {:asc, DateTime})
 
-    {:reply, {:ok, todos}, table}
+    {:reply, {:ok, items}, table}
   end
 
   def handle_call({:update, id, changes}, _from, table) do
     result =
       case :ets.lookup(table, id) do
-        [{^id, todo}] ->
-          updated = apply_changes(todo, changes)
+        [{^id, item}] ->
+          updated = apply_changes(item, changes)
           :ets.insert(table, {id, updated})
           {:ok, updated}
 
@@ -115,21 +115,21 @@ defmodule ExAgent.TodoStore.InMemory do
     :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
   end
 
-  defp filter_by_tag(todos, nil), do: todos
+  defp filter_by_tag(items, nil), do: items
 
-  defp filter_by_tag(todos, tag) do
-    Enum.filter(todos, fn todo -> tag in todo.tags end)
+  defp filter_by_tag(items, tag) do
+    Enum.filter(items, fn item -> tag in item.tags end)
   end
 
-  defp apply_changes(todo, changes) do
+  defp apply_changes(item, changes) do
     changes = Map.new(changes, fn {k, v} -> {to_string(k), v} end)
 
-    todo
+    item
     |> maybe_put(:content, changes["content"])
     |> maybe_put(:done, changes["done"])
     |> maybe_put(:tags, changes["tags"])
   end
 
-  defp maybe_put(todo, _field, nil), do: todo
-  defp maybe_put(todo, field, value), do: Map.put(todo, field, value)
+  defp maybe_put(item, _field, nil), do: item
+  defp maybe_put(item, field, value), do: Map.put(item, field, value)
 end

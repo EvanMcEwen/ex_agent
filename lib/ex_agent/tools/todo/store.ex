@@ -1,4 +1,4 @@
-defmodule ExAgent.TodoStore do
+defmodule ExAgent.Tools.Todo.Store do
   @moduledoc """
   Behaviour and wrapper for pluggable todo storage backends.
 
@@ -8,26 +8,26 @@ defmodule ExAgent.TodoStore do
 
   ## Implementing a backend
 
-  Implement the `ExAgent.TodoStore` behaviour. Unlike the functional
+  Implement the `ExAgent.Tools.Todo.Store` behaviour. Unlike the functional
   `Memory` and `ToolProvider` backends, a todo store is **process-based**:
   `start_link/1` must start a process whose `pid` is threaded through every
   subsequent call. This allows mutations from tool callbacks to be reflected
   immediately without modifying the agent's internal state.
 
-      defmodule MyApp.TodoStore.Database do
-        @behaviour ExAgent.TodoStore
+      defmodule MyApp.Todo.Store.Database do
+        @behaviour ExAgent.Tools.Todo.Store
 
         def start_link(opts), do: GenServer.start_link(__MODULE__, opts)
         # ...
       end
 
-  Then start it with `ExAgent.TodoStore.new/2` and pass the resulting struct
-  to `ExAgent.Tools.Todo.tools/1`:
+  Then start it with `ExAgent.Tools.Todo.Store.new/2` and pass the resulting
+  struct to `ExAgent.Tools.Todo.tools/1`:
 
-      {:ok, store} = ExAgent.TodoStore.new(MyApp.TodoStore.Database, repo: MyApp.Repo)
+      {:ok, store} = ExAgent.Tools.Todo.Store.new(MyApp.Todo.Store.Database, repo: MyApp.Repo)
       tools = ExAgent.Tools.Todo.tools(store)
 
-  The default backend is `ExAgent.TodoStore.InMemory`.
+  The default backend is `ExAgent.Tools.Todo.Store.InMemory`.
   """
 
   @type t :: %__MODULE__{
@@ -42,13 +42,14 @@ defmodule ExAgent.TodoStore do
 
   @doc "Creates a new todo with the given content and tags. Returns `{:ok, todo}`."
   @callback create(store :: pid(), content :: String.t(), tags :: [String.t()]) ::
-              {:ok, ExAgent.Todo.t()} | {:error, term()}
+              {:ok, ExAgent.Tools.Todo.Item.t()} | {:error, term()}
 
   @doc """
   Lists todos. When `tag` is `nil`, returns all todos; otherwise returns only
   todos that include `tag` in their tags list.
   """
-  @callback list(store :: pid(), tag :: String.t() | nil) :: {:ok, [ExAgent.Todo.t()]}
+  @callback list(store :: pid(), tag :: String.t() | nil) ::
+              {:ok, [ExAgent.Tools.Todo.Item.t()]}
 
   @doc """
   Updates a todo by id. `changes` is a map with any of the keys
@@ -56,7 +57,7 @@ defmodule ExAgent.TodoStore do
   `{:error, :not_found}`.
   """
   @callback update(store :: pid(), id :: String.t(), changes :: map()) ::
-              {:ok, ExAgent.Todo.t()} | {:error, :not_found}
+              {:ok, ExAgent.Tools.Todo.Item.t()} | {:error, :not_found}
 
   @doc "Deletes a todo by id. Returns `:ok` or `{:error, :not_found}`."
   @callback delete(store :: pid(), id :: String.t()) :: :ok | {:error, :not_found}
@@ -71,17 +72,19 @@ defmodule ExAgent.TodoStore do
     end
   end
 
-  @spec create(t(), String.t(), [String.t()]) :: {:ok, ExAgent.Todo.t()} | {:error, term()}
+  @spec create(t(), String.t(), [String.t()]) ::
+          {:ok, ExAgent.Tools.Todo.Item.t()} | {:error, term()}
   def create(%__MODULE__{backend: b, pid: p}, content, tags \\ []) do
     b.create(p, content, tags)
   end
 
-  @spec list(t(), String.t() | nil) :: {:ok, [ExAgent.Todo.t()]}
+  @spec list(t(), String.t() | nil) :: {:ok, [ExAgent.Tools.Todo.Item.t()]}
   def list(%__MODULE__{backend: b, pid: p}, tag \\ nil) do
     b.list(p, tag)
   end
 
-  @spec update(t(), String.t(), map()) :: {:ok, ExAgent.Todo.t()} | {:error, :not_found}
+  @spec update(t(), String.t(), map()) ::
+          {:ok, ExAgent.Tools.Todo.Item.t()} | {:error, :not_found}
   def update(%__MODULE__{backend: b, pid: p}, id, changes) do
     b.update(p, id, changes)
   end

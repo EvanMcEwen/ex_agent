@@ -1,4 +1,4 @@
-defmodule ExAgent.Todo do
+defmodule ExAgent.Tools.Todo.Item do
   @moduledoc "A todo item with content, tags, and completion state."
 
   @type t :: %__MODULE__{
