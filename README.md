@@ -116,6 +116,51 @@ pid = ExAgent.whereis("researcher")
 | `generate_opts` | `keyword()` | `[]` | Extra opts forwarded to `ReqLLM.generate_text/3` |
 | `metadata` | `map()` | `%{}` | Arbitrary user data attached to the agent |
 
+## Testing with a Local OpenAI-Compatible Server
+
+These steps use [LM Studio](https://lmstudio.ai/) (or any OpenAI-compatible server) running at `192.168.20.192:1234`.
+
+**1. Set the API key before starting iex**
+
+```bash
+OPENAI_API_KEY=local iex -S mix
+```
+
+**2. Start a todo store and get tools**
+
+```elixir
+{:ok, store} = ExAgent.TodoStore.new(ExAgent.TodoStore.InMemory)
+tools = ExAgent.Tools.Todo.tools(store)
+```
+
+**3. Build the agent**
+
+```elixir
+agent = %ExAgent.Agent{
+  model: ReqLLM.model!(%{
+    provider: :openai,
+    id: "gemma-4-e4b-it",
+    base_url: "http://192.168.20.192:1234/v1"
+  }),
+  tools: tools,
+  system_prompt: "You are a helpful task management assistant with access to a todo list.",
+  max_turns: 10,
+  timeout: 60_000
+}
+```
+
+**4. Start the agent and run messages**
+
+```elixir
+{:ok, pid} = ExAgent.start(agent)
+
+{:ok, response} = ExAgent.run_sync(pid, "Add a task to buy groceries, tagged 'shopping'")
+IO.puts(response)
+
+{:ok, response} = ExAgent.run_sync(pid, "What tasks do I have?")
+IO.puts(response)
+```
+
 ## API Reference
 
 | Function | Description |

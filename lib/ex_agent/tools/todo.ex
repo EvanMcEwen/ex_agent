@@ -59,7 +59,11 @@ defmodule ExAgent.Tools.Todo do
       callback: fn args ->
         content = args["content"]
         tags = args["tags"] || []
-        TodoStore.create(store, content, tags)
+
+        case TodoStore.create(store, content, tags) do
+          {:ok, todo} -> {:ok, Jason.encode!(todo)}
+          error -> error
+        end
       end
     )
   end
@@ -79,7 +83,10 @@ defmodule ExAgent.Tools.Todo do
         }
       },
       callback: fn args ->
-        TodoStore.list(store, args["tag"])
+        case TodoStore.list(store, args["tag"]) do
+          {:ok, todos} -> {:ok, Jason.encode!(todos)}
+          error -> error
+        end
       end
     )
   end
@@ -115,7 +122,11 @@ defmodule ExAgent.Tools.Todo do
       callback: fn args ->
         id = args["id"]
         changes = Map.take(args, ["content", "tags", "done"])
-        TodoStore.update(store, id, changes)
+
+        case TodoStore.update(store, id, changes) do
+          {:ok, todo} -> {:ok, Jason.encode!(todo)}
+          error -> error
+        end
       end
     )
   end
@@ -135,7 +146,10 @@ defmodule ExAgent.Tools.Todo do
         "required" => ["id"]
       },
       callback: fn args ->
-        TodoStore.delete(store, args["id"])
+        case TodoStore.delete(store, args["id"]) do
+          :ok -> {:ok, Jason.encode!(%{deleted: true})}
+          error -> error
+        end
       end
     )
   end

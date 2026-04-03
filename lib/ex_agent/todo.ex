@@ -9,5 +9,6 @@ defmodule ExAgent.Todo do
           inserted_at: DateTime.t()
         }
 
+  @derive Jason.Encoder
   defstruct [:id, :content, tags: [], done: false, inserted_at: nil]
 end
